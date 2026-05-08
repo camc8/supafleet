@@ -30,7 +30,7 @@ export default function Dashboard({ ThemeToggle }: Props) {
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <img src="/supafleet-icon.png" className="h-7 w-7" alt="Supafleet" />
-            <span style={{fontFamily: '"DM Serif Display", serif'}} className="text-lg tracking-tight">Supafleet</span>
+            <span style={{fontFamily: '"Playfair Display", serif'}} className="text-lg tracking-tight">Supafleet</span>
           </div>
           <div className="flex items-center gap-2">
 
