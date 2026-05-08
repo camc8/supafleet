@@ -28,9 +28,9 @@ export default function Dashboard({ ThemeToggle }: Props) {
     <div className="min-h-screen bg-background">
       <header className="border-b">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img src="/logo.svg" className="h-5 w-auto" alt="Supafleet" />
-            <span className="font-semibold text-sm tracking-tight">Supafleet</span>
+          <div className="flex items-center gap-2.5">
+            <img src="/supafleet-icon.png" className="h-7 w-7" alt="Supafleet" />
+            <span style={{fontFamily: '"DM Serif Display", serif'}} className="text-lg tracking-tight">Supafleet</span>
           </div>
           <div className="flex items-center gap-2">
 

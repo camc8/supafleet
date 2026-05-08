@@ -1,11 +1,15 @@
 <div align="center">
-  <img src="logo/logo.png" width="180" alt="Supafleet logo" />
+  <img src="dashboard/frontend/public/supafleet-logo.png" width="180" alt="Supafleet" />
   <h1>Supafleet</h1>
   <p>Self-hosted Supabase fleet manager. One command to spin up isolated, production-ready Supabase instances on any VPS.</p>
   <p>
     <img src="https://img.shields.io/badge/license-MIT-black" alt="MIT" />
     <img src="https://img.shields.io/badge/node-%3E%3D18-black" alt="Node 18+" />
     <img src="https://img.shields.io/badge/docker-required-black" alt="Docker" />
+    <br />
+    <a href="https://supafleet-demo.vercel.app"><strong>→ Live demo</strong></a>
+    &nbsp;&nbsp;
+    <a href="https://supafleet-demo.vercel.app/demo">Interactive dashboard demo</a>
   </p>
 </div>
 

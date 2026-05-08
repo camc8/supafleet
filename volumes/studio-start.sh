@@ -1,8 +1,10 @@
 #!/bin/sh
 set -e
-STUDIO_JS="/app/apps/studio/server.js"
 
-# Always reset any previously patched basePath back to empty string
+# Create missing content directory that Studio tries to scan at runtime
+mkdir -p /app/apps/studio/components/interfaces/Home/Connect/content
+
+# Reset basePath so studio works at root path (nginx strips /studio prefix)
 node - << 'JSEOF'
 const fs = require('fs');
 const p = '/app/apps/studio/server.js';
