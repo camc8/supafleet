@@ -8,9 +8,9 @@ import { useState } from 'react';
 function StatusDot({ status }: { status: string }) {
   return (
     <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${
-      status === 'healthy' ? 'bg-green-500 dark:bg-green-400' :
-      status === 'degraded' ? 'bg-yellow-500 dark:bg-yellow-400' :
-      status === 'unhealthy' ? 'bg-red-500 dark:bg-red-400' :
+      status === 'healthy'   ? 'bg-green-500  dark:bg-green-400'  :
+      status === 'degraded'  ? 'bg-yellow-500 dark:bg-yellow-400' :
+      status === 'unhealthy' ? 'bg-red-500    dark:bg-red-400'    :
       'bg-gray-300 dark:bg-gray-600'
     }`} />
   );
@@ -70,7 +70,7 @@ export default function Layout({ children, toggleDark, dark }: LayoutProps) {
                   to={`/instances/${inst.name}`}
                   className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors ${
                     isActive
-                      ? 'bg-accent text-accent-foreground font-medium'
+                      ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                   }`}
                 >
@@ -96,9 +96,9 @@ export default function Layout({ children, toggleDark, dark }: LayoutProps) {
                   <span className="text-muted-foreground">Memory</span>
                   <span>{host.usedMemGB?.toFixed(1)} / {host.totalMemGB?.toFixed(0)} GB</span>
                 </div>
-                <div className="h-1 bg-muted rounded-full overflow-hidden">
+                <div className="h-1 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all ${memPercent > 85 ? 'bg-destructive' : 'bg-foreground/40'}`}
+                    className={`h-full rounded-full transition-all ${memPercent > 85 ? 'bg-destructive' : 'bg-gray-400 dark:bg-gray-500'}`}
                     style={{ width: `${Math.min(memPercent, 100)}%` }}
                   />
                 </div>
