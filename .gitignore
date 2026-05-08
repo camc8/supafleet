@@ -16,3 +16,5 @@ supabase/.temp/
 .vercel/
 __pycache__/
 *.pyc
+register-studio.sh
+setup-wildcard-studio.sh
