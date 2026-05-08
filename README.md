@@ -57,43 +57,83 @@ Each Supabase instance runs as a Docker Compose project with ~10 containers isol
 
 ## Server Recommendations
 
-| Instances | VPS Size | RAM | vCPU | Monthly (Hetzner) |
-|-----------|----------|-----|------|-------------------|
-| 1–2       | CX22     | 4 GB | 2   | ~€4–5             |
-| 3–5       | CX32     | 8 GB | 4   | ~€9–10            |
-| 6–10      | CX42     | 16 GB | 8  | ~€17–18           |
+Supafleet runs well on any Linux VPS. [Hetzner](https://www.hetzner.com/cloud/) offers the best value — fast European/US hardware at low flat-rate prices with no egress fees.
 
-Each Supabase instance uses ~300–500 MB RAM at idle with all services running. Disabling optional services (analytics, imgproxy, vector, edge-functions) drops this to ~150 MB.
+| Instances | Size | RAM | vCPU | Est. monthly (USD) | Link |
+|-----------|------|-----|------|--------------------|------|
+| 1–2 | CX22 | 4 GB | 2 | ~–6 | [hetzner.com/cloud](https://www.hetzner.com/cloud/) |
+| 3–5 | CX32 | 8 GB | 4 | ~–11 | [hetzner.com/cloud](https://www.hetzner.com/cloud/) |
+| 6–10 | CX42 | 16 GB | 8 | ~–22 | [hetzner.com/cloud](https://www.hetzner.com/cloud/) |
+| 10+ | CX52 | 32 GB | 16 | ~–44 | [hetzner.com/cloud](https://www.hetzner.com/cloud/) |
+
+> USD estimates at ~1.09 USD/EUR. Check [hetzner.com/cloud](https://www.hetzner.com/cloud/) for current pricing — Hetzner bills in EUR.
+
+Each Supabase instance uses ~300–500 MB RAM at idle. Disabling optional services (analytics, imgproxy, vector) drops this to ~150 MB.
 
 ## Why Hetzner?
 
-- **€4–5/mo** for a capable 2 vCPU / 4 GB VPS (CX22)
-- **1 Gbps network** — no egress fees that add up like AWS/GCP
-- **EU and US datacenters** — pick your region
-- **Transparent pricing** — no surprise bills, predictable flat rates
-- **€20 free trial** — enough to run Supafleet for months before paying
-- Supports [Hetzner Cloud API](https://docs.hetzner.cloud/) for automation
+- **~–6/mo** for a capable 2 vCPU / 4 GB VPS (CX22) — a fraction of AWS/GCP equivalent
+- **No egress fees** — 1 Gbps network included, traffic doesn't add up like AWS
+- **EU and US datacenters** — Ashburn (VA), Hillsboro (OR), Nuremberg, Falkenstein, Helsinki
+- **Predictable pricing** — flat monthly rate, no surprise bills
+- **–22 free credit** for new accounts — enough to run Supafleet for several months
+- [Hetzner Cloud API](https://docs.hetzner.cloud/) for automation and provisioning
 
-## DNS Setup — Automatic Subdomains
+## Custom Domain Setup
 
-Supafleet uses a **wildcard DNS record** so each new instance automatically gets a subdomain without manual DNS changes.
+Supafleet needs two domains pointing at your VPS:
 
-### Cloudflare (recommended)
+| Domain | Purpose |
+|--------|---------|
+| `manage.yourdomain.com` | Dashboard UI |
+| `*.db.yourdomain.com` | Per-instance API + Studio (wildcard) |
 
-1. In Cloudflare DNS, add a record:
-   - Type: `A`
-   - Name: `*.db` (for wildcard under `db.yourdomain.com`)
-   - Value: your VPS IP
-   - Proxy: **DNS only** (orange cloud off — TLS is handled by certbot)
-2. Add a second `A` record for your dashboard domain:
-   - Name: `manage`
-   - Value: same VPS IP
+Each new instance automatically gets `{name}.db.yourdomain.com` — no manual DNS step needed per instance.
 
-Cloudflare also provides the API token needed for wildcard TLS cert issuance via DNS-01 challenge.
+### Step 1 — Point DNS at your VPS
+
+In your DNS provider, add these records (replace `203.0.113.1` with your server IP):
+
+| Type | Name | Value | Notes |
+|------|------|-------|-------|
+| A | `manage` | `203.0.113.1` | Dashboard domain |
+| A | `*.db` | `203.0.113.1` | Wildcard for all instances |
+| A | `db` | `203.0.113.1` | Apex (optional, for the root) |
+
+> **Cloudflare users:** Set **Proxy status → DNS only** (grey cloud) on all three records.
+> TLS termination happens on the server via Let's Encrypt — Cloudflare proxying breaks the cert challenge.
+
+### Step 2 — Get a Cloudflare API token (for wildcard TLS)
+
+Wildcard certificates (`*.db.yourdomain.com`) require a DNS-01 ACME challenge — certbot must be able to create a TXT record in your zone. Cloudflare is the easiest way to automate this.
+
+1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com/profile/api-tokens) → **API Tokens → Create Token**
+2. Use the **Edit zone DNS** template
+3. Under **Zone Resources** → select your domain
+4. Click **Continue to summary → Create Token**
+5. Copy the token — you'll only see it once
+
+Then save it on your server:
+
+```bash
+cat > ~/.cloudflare.ini << 'EOF'
+dns_cloudflare_api_token = YOUR_TOKEN_HERE
+EOF
+chmod 600 ~/.cloudflare.ini
+```
 
 ### Other DNS providers
 
-Any provider supporting wildcard `A` records works. The `setup.sh` uses `certbot-dns-cloudflare` for wildcard TLS; for other providers, switch to the matching certbot DNS plugin.
+Any provider that supports wildcard  records works. The  uses  for the DNS-01 challenge. For other providers (Route53, Namecheap, Porkbun, etc.), install the matching certbot plugin:
+
+| Provider | Plugin |
+|----------|--------|
+| AWS Route 53 | `python3-certbot-dns-route53` |
+| DigitalOcean | `python3-certbot-dns-digitalocean` |
+| Namecheap | `certbot-dns-namecheap` |
+| Porkbun | `certbot-dns-porkbun` |
+
+Then pass `--dns-<provider>` instead of `--dns-cloudflare` in `setup.sh`.
 
 ## Prerequisites
 
