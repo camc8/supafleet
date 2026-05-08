@@ -1,7 +1,8 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useState } from 'react';
-import { useInstance, useInstanceMetrics, useStartInstance, useStopInstance, useRestartInstance } from '../hooks/useInstances';
-import { Loader2, Play, Square, RotateCw, Server, Activity, BarChart3, FileText, Key, ExternalLink } from 'lucide-react';
+import { useInstance, useInstanceMetrics, useStartInstance, useStopInstance, useRestartInstance, useDeleteInstance } from '../hooks/useInstances';
+import { Loader2, Play, Square, RotateCw, Server, Activity, BarChart3, FileText, Key, ExternalLink, Trash2, X } from 'lucide-react';
+import * as Dialog from '@radix-ui/react-dialog';
 import ServicesTab from '../components/ServicesTab';
 import MetricsTab from '../components/MetricsTab';
 import LogsTab from '../components/LogsTab';
@@ -24,6 +25,95 @@ function StatusDot({ status }: { status: string }) {
       status === 'unhealthy' ? 'bg-red-500    dark:bg-red-400'    :
       'bg-gray-300 dark:bg-gray-600'
     }`} />
+  );
+}
+
+function DeleteModal({ instanceName }: { instanceName: string }) {
+  const [open, setOpen] = useState(false);
+  const [confirm, setConfirm] = useState('');
+  const [removeVolumes, setRemoveVolumes] = useState(false);
+  const navigate = useNavigate();
+  const deleteMutation = useDeleteInstance();
+
+  const handleDelete = async () => {
+    await deleteMutation.mutateAsync({ name: instanceName, removeVolumes });
+    setOpen(false);
+    navigate('/');
+  };
+
+  return (
+    <Dialog.Root open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setConfirm(''); setRemoveVolumes(false); } }}>
+      <Dialog.Trigger asChild>
+        <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/30 transition-colors">
+          <Trash2 className="w-3.5 h-3.5" />
+          Delete
+        </button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-40" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-background border rounded-lg shadow-lg p-6 focus:outline-none">
+          <div className="flex items-center justify-between mb-4">
+            <Dialog.Title className="text-base font-semibold text-red-600 dark:text-red-400">
+              Delete instance
+            </Dialog.Title>
+            <Dialog.Close asChild>
+              <button className="p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground">
+                <X className="w-4 h-4" />
+              </button>
+            </Dialog.Close>
+          </div>
+
+          <p className="text-sm text-muted-foreground mb-4">
+            This will stop and remove all Docker containers for{' '}
+            <span className="font-mono font-medium text-foreground">{instanceName}</span>{' '}
+            along with its nginx routing config. This cannot be undone.
+          </p>
+
+          <label className="flex items-start gap-2.5 mb-5 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={removeVolumes}
+              onChange={e => setRemoveVolumes(e.target.checked)}
+              className="mt-0.5 rounded"
+            />
+            <div>
+              <p className="text-sm font-medium">Also delete data volumes</p>
+              <p className="text-xs text-muted-foreground">Permanently removes the Postgres database and all stored data.</p>
+            </div>
+          </label>
+
+          <div className="mb-4">
+            <label className="block text-xs text-muted-foreground mb-1.5">
+              Type <span className="font-mono font-medium text-foreground">{instanceName}</span> to confirm
+            </label>
+            <input
+              type="text"
+              value={confirm}
+              onChange={e => setConfirm(e.target.value)}
+              placeholder={instanceName}
+              className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-red-500 font-mono"
+              autoComplete="off"
+            />
+          </div>
+
+          <div className="flex gap-2 justify-end">
+            <Dialog.Close asChild>
+              <button className="px-3 py-2 text-sm border border-border rounded-md hover:bg-muted transition-colors">
+                Cancel
+              </button>
+            </Dialog.Close>
+            <button
+              onClick={handleDelete}
+              disabled={confirm !== instanceName || deleteMutation.isPending}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {deleteMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+              {deleteMutation.isPending ? 'Deleting…' : 'Delete instance'}
+            </button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
@@ -122,6 +212,7 @@ export default function InstanceDetail() {
                 {startMutation.isPending ? 'Starting…' : 'Start'}
               </button>
             )}
+            <DeleteModal instanceName={instance.name} />
           </div>
         </div>
 
