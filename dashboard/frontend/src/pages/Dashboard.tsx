@@ -16,11 +16,11 @@ export default function Dashboard() {
   return (
     <div className="flex flex-col min-h-full">
       {/* Page header */}
-      <div className="border-b border-gray-800 px-6 py-4 flex items-center justify-between flex-shrink-0">
+      <div className="border-b border-border px-6 h-[72px] flex items-center justify-between flex-shrink-0">
         <div>
-          <h1 className="text-base font-medium text-gray-100">All instances</h1>
+          <h1 className="text-base font-medium text-foreground">All instances</h1>
           {totalCount > 0 && (
-            <p className="text-xs text-gray-500 mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               {healthyCount} healthy
               {degradedCount > 0 ? `, ${degradedCount} degraded` : ''}
               {' '}· {totalCount} total
@@ -29,7 +29,7 @@ export default function Dashboard() {
         </div>
         <button
           onClick={() => setIsCreateModalOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-gray-900 text-sm font-medium rounded-md hover:bg-gray-100 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-foreground text-background text-sm font-medium rounded-md hover:opacity-80 transition-opacity"
         >
           <Plus className="w-4 h-4" />
           New instance
@@ -40,28 +40,28 @@ export default function Dashboard() {
       <div className="flex-1 p-6">
         {isLoading ? (
           <div className="flex justify-center py-16">
-            <Loader2 className="w-6 h-6 animate-spin text-gray-600" />
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
         ) : error ? (
-          <div className="border border-gray-800 rounded-lg p-8 text-center">
-            <XCircle className="w-8 h-8 text-gray-600 mx-auto mb-3" />
-            <p className="text-sm font-medium text-gray-300 mb-1">Failed to load instances</p>
-            <p className="text-xs text-gray-600 mb-4">{error instanceof Error ? error.message : 'Unknown error'}</p>
+          <div className="border border-border rounded-lg p-8 text-center">
+            <XCircle className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
+            <p className="text-sm font-medium text-foreground mb-1">Failed to load instances</p>
+            <p className="text-xs text-muted-foreground mb-4">{error instanceof Error ? error.message : 'Unknown error'}</p>
             <button
               onClick={() => refetch()}
-              className="text-sm px-3 py-1.5 border border-gray-700 rounded-md hover:bg-gray-800 transition-colors text-gray-300"
+              className="text-sm px-3 py-1.5 border border-border rounded-md hover:bg-muted transition-colors text-foreground"
             >
               Retry
             </button>
           </div>
         ) : !instances || instances.length === 0 ? (
-          <div className="border border-dashed border-gray-800 rounded-lg p-12 text-center">
-            <Server className="w-10 h-10 text-gray-700 mx-auto mb-3" />
-            <p className="font-medium text-gray-300 mb-1">No instances</p>
-            <p className="text-sm text-gray-600 mb-4">Create your first Supabase instance to get started</p>
+          <div className="border border-dashed border-border rounded-lg p-12 text-center">
+            <Server className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+            <p className="font-medium text-foreground mb-1">No instances</p>
+            <p className="text-sm text-muted-foreground mb-4">Create your first Supabase instance to get started</p>
             <button
               onClick={() => setIsCreateModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-gray-900 text-sm font-medium rounded-md hover:bg-gray-100 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-foreground text-background text-sm font-medium rounded-md hover:opacity-80 transition-opacity"
             >
               <Plus className="w-4 h-4" /> New instance
             </button>

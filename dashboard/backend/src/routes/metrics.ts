@@ -1,8 +1,19 @@
 import { Router, Request, Response } from 'express';
 import os from 'os';
+import fs from 'fs';
 import MetricsCollector from '../services/MetricsCollector';
 import { RedisCache } from '../services/RedisCache';
 import { logger } from '../utils/logger';
+
+function parseProcMeminfo(): Record<string, number> {
+  const raw = fs.readFileSync('/proc/meminfo', 'utf8');
+  const result: Record<string, number> = {};
+  for (const line of raw.split('\n')) {
+    const m = line.match(/^(\w+):\s+(\d+)/);
+    if (m) result[m[1]] = parseInt(m[2], 10) * 1024; // kB -> bytes
+  }
+  return result;
+}
 
 export function createMetricsRoutes(
   metricsCollector: MetricsCollector,
@@ -21,19 +32,29 @@ export function createMetricsRoutes(
         instanceCount: 0, runningCount: 0, timestamp: new Date()
       };
 
-      const totalMem = os.totalmem();
-      const freeMem = os.freemem();
-      const usedMem = totalMem - freeMem;
+      const mem = parseProcMeminfo();
+      const totalMem = mem['MemTotal'] ?? os.totalmem();
+      const availableMem = mem['MemAvailable'] ?? os.freemem();
+      const usedMem = totalMem - availableMem;
+      const swapTotal = mem['SwapTotal'] ?? 0;
+      const swapFree = mem['SwapFree'] ?? 0;
+      const swapUsed = swapTotal - swapFree;
+
+      const GB = (b: number) => parseFloat((b / 1024 / 1024 / 1024).toFixed(2));
 
       res.json({
         ...latest,
         host: {
           totalMemBytes: totalMem,
           usedMemBytes: usedMem,
-          freeMemBytes: freeMem,
-          totalMemGB: parseFloat((totalMem / 1024 / 1024 / 1024).toFixed(2)),
-          usedMemGB: parseFloat((usedMem / 1024 / 1024 / 1024).toFixed(2)),
+          availableMemBytes: availableMem,
+          totalMemGB: GB(totalMem),
+          usedMemGB: GB(usedMem),
+          availableMemGB: GB(availableMem),
           memPercent: parseFloat(((usedMem / totalMem) * 100).toFixed(1)),
+          swapTotalGB: GB(swapTotal),
+          swapUsedGB: GB(swapUsed),
+          swapPercent: swapTotal > 0 ? parseFloat(((swapUsed / swapTotal) * 100).toFixed(1)) : 0,
           cpuCount: os.cpus().length
         }
       });

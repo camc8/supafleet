@@ -7,9 +7,9 @@
     <img src="https://img.shields.io/badge/node-%3E%3D18-black" alt="Node 18+" />
     <img src="https://img.shields.io/badge/docker-required-black" alt="Docker" />
     <br />
-    <a href="https://supafleet-demo.vercel.app"><strong>→ Live demo</strong></a>
+    <a href="https://supafleet.camc8.com"><strong>→ supafleet.camc8.com</strong></a>
     &nbsp;&nbsp;
-    <a href="https://supafleet-demo.vercel.app/demo">Interactive dashboard demo</a>
+    <a href="https://supafleet.camc8.com/demo">Interactive dashboard demo</a>
   </p>
 </div>
 
