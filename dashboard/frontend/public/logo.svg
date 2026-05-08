@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" fill="none">
+  <ellipse cx="22" cy="15" rx="12" ry="5" fill="white" opacity="0.85"/>
+  <rect x="10" y="15" width="24" height="14" fill="white" opacity="0.85"/>
+  <ellipse cx="22" cy="29" rx="12" ry="5" fill="white" opacity="0.85"/>
+  <ellipse cx="42" cy="10" rx="12" ry="5" fill="white"/>
+  <rect x="30" y="10" width="24" height="14" fill="white"/>
+  <ellipse cx="42" cy="24" rx="12" ry="5" fill="white"/>
+  <ellipse cx="62" cy="15" rx="12" ry="5" fill="white" opacity="0.85"/>
+  <rect x="50" y="15" width="24" height="14" fill="white" opacity="0.85"/>
+  <ellipse cx="62" cy="29" rx="12" ry="5" fill="white" opacity="0.85"/>
+  <text x="84" y="30" font-family="system-ui,-apple-system,sans-serif" font-size="18" font-weight="600" fill="white" letter-spacing="-0.5">supafleet</text>
+</svg>

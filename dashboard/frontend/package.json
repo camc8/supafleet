@@ -1,13 +1,14 @@
 {
-  "name": "multibase-dashboard-frontend",
+  "name": "supafleet-dashboard",
   "version": "1.0.0",
   "description": "Frontend for Multibase Dashboard",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "react": "^19.0.0",

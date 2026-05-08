@@ -193,3 +193,47 @@ export const useRefreshHealth = () => {
     },
   });
 };
+
+export const useStopService = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, service }: { name: string; service: string }) =>
+      instancesApi.stopService(name, service),
+    onSuccess: (_data, { name }) => {
+      queryClient.invalidateQueries({ queryKey: instanceKeys.detail(name) });
+    },
+  });
+};
+
+export const useStartService = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, service }: { name: string; service: string }) =>
+      instancesApi.startService(name, service),
+    onSuccess: (_data, { name }) => {
+      queryClient.invalidateQueries({ queryKey: instanceKeys.detail(name) });
+    },
+  });
+};
+
+export const useDisableService = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, service }: { name: string; service: string }) =>
+      instancesApi.disableService(name, service),
+    onSuccess: (_data, { name }) => {
+      queryClient.invalidateQueries({ queryKey: instanceKeys.detail(name) });
+    },
+  });
+};
+
+export const useEnableService = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, service }: { name: string; service: string }) =>
+      instancesApi.enableService(name, service),
+    onSuccess: (_data, { name }) => {
+      queryClient.invalidateQueries({ queryKey: instanceKeys.detail(name) });
+    },
+  });
+};

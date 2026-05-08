@@ -1,7 +1,7 @@
 {
-  "name": "multibase-dashboard-backend",
+  "name": "supafleet-backend",
   "version": "1.0.0",
-  "description": "Backend API for Multibase Dashboard",
+  "description": "Backend API for Supafleet \u2014 self-hosted Supabase fleet manager",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
@@ -11,7 +11,12 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio"
   },
-  "keywords": ["multibase", "supabase", "dashboard", "docker"],
+  "keywords": [
+    "multibase",
+    "supabase",
+    "dashboard",
+    "docker"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {

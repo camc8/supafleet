@@ -1,286 +1,262 @@
 import { useState } from 'react';
 import type { SupabaseInstance } from '../types';
-import { Activity, Cpu, HardDrive, Network, TrendingUp, Clock, BarChart3 } from 'lucide-react';
-import GaugeChart from './charts/GaugeChart';
-import LineChart from './charts/LineChart';
-import BarChart from './charts/BarChart';
-import { useInstanceMetricsHistory } from '../hooks/useInstances';
+import { Activity, HardDrive, Network, TrendingUp, Clock, BarChart3 } from 'lucide-react';
+import {
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from 'recharts';
+import { useInstanceMetricsHistory, useInstanceMetrics, useSystemMetrics } from '../hooks/useInstances';
+import { format } from 'date-fns';
 
-interface MetricsTabProps {
-  instance: SupabaseInstance;
+interface MetricsTabProps { instance: SupabaseInstance; }
+type TimeRange = '1h' | '6h' | '24h' | '7d';
+
+function ProgressBar({ value, label, sub }: { value: number; label: string; sub: string }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex justify-between text-xs">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-medium">{sub}</span>
+      </div>
+      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+        <div className="h-full bg-foreground/70 rounded-full transition-all" style={{ width: `${Math.min(value, 100)}%` }} />
+      </div>
+    </div>
+  );
 }
 
-type TimeRange = '1h' | '6h' | '24h' | '7d';
+const chartTooltipStyle = { backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '6px', fontSize: '12px' };
 
 export default function MetricsTab({ instance }: MetricsTabProps) {
   const [timeRange, setTimeRange] = useState<TimeRange>('1h');
-  const { data: historyData, isLoading: historyLoading } = useInstanceMetricsHistory(
-    instance.name,
-    timeRange
-  );
-  if (!instance.metrics) {
+  const { data: historyData, isLoading: historyLoading } = useInstanceMetricsHistory(instance.name, timeRange);
+  const { data: currentMetrics, isLoading: currentLoading } = useInstanceMetrics(instance.name);
+  const { data: systemMetrics } = useSystemMetrics();
+
+  // Aggregate current metrics from per-service data
+  const serviceMetrics = currentMetrics as Record<string, { cpu: number | null; memory: number | null; networkRx: number; networkTx: number; diskRead: number; diskWrite: number }> | undefined;
+  
+  const totalCpu = serviceMetrics
+    ? Object.values(serviceMetrics).reduce((sum, s) => sum + (s.cpu ?? 0), 0)
+    : null;
+  const totalMemMB = serviceMetrics
+    ? Object.values(serviceMetrics).reduce((sum, s) => sum + (s.memory ?? 0), 0)
+    : null;
+  const totalRx = serviceMetrics
+    ? Object.values(serviceMetrics).reduce((sum, s) => sum + (s.networkRx ?? 0), 0)
+    : null;
+  const totalTx = serviceMetrics
+    ? Object.values(serviceMetrics).reduce((sum, s) => sum + (s.networkTx ?? 0), 0)
+    : null;
+
+  if (currentLoading) {
     return (
-      <div className="bg-card border rounded-lg p-12 text-center">
-        <Activity className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-        <p className="text-lg text-muted-foreground">No metrics available</p>
+      <div className="border rounded-lg p-12 text-center bg-card">
+        <Activity className="w-10 h-10 text-muted-foreground mx-auto mb-4 animate-pulse" />
+        <p className="text-muted-foreground text-sm">Loading metrics…</p>
       </div>
     );
   }
 
-  // Assume memory is in MB, calculate percentage based on typical 4GB limit (adjustable)
-  const memoryLimitGB = 4;
-  const memoryGB = instance.metrics.memory / 1024;
-  const memoryPercent = (memoryGB / memoryLimitGB) * 100;
+  if (!serviceMetrics || totalCpu === null) {
+    return (
+      <div className="border rounded-lg p-12 text-center bg-card">
+        <Activity className="w-10 h-10 text-muted-foreground mx-auto mb-4" />
+        <p className="text-muted-foreground text-sm">No metrics available</p>
+        <p className="text-xs text-muted-foreground mt-1">Metrics are collected every 30 seconds</p>
+      </div>
+    );
+  }
 
-  const secondaryMetrics = [
-    {
-      label: 'Network RX',
-      value: `${(instance.metrics.networkRx / 1024 / 1024).toFixed(2)} MB/s`,
-      icon: Network,
-      color: 'text-purple-600 bg-purple-100',
-    },
-    {
-      label: 'Network TX',
-      value: `${(instance.metrics.networkTx / 1024 / 1024).toFixed(2)} MB/s`,
-      icon: TrendingUp,
-      color: 'text-orange-600 bg-orange-100',
-    },
-    {
-      label: 'Disk Read',
-      value: `${(instance.metrics.diskRead / 1024 / 1024).toFixed(2)} MB/s`,
-      icon: HardDrive,
-      color: 'text-cyan-600 bg-cyan-100',
-    },
-    {
-      label: 'Disk Write',
-      value: `${(instance.metrics.diskWrite / 1024 / 1024).toFixed(2)} MB/s`,
-      icon: HardDrive,
-      color: 'text-pink-600 bg-pink-100',
-    },
-  ];
+  const totalMemGB = totalMemMB! / 1024;
+  const hostMemGB: number = (systemMetrics as any)?.host?.totalMemGB ?? 8;
+  const memoryPercent = Math.min((totalMemGB / hostMemGB) * 100, 100);
+  const cpuPercent = Math.min(totalCpu, 100);
+
+  const chartData = (historyData || []).map((d: any) => ({
+    ...d,
+    time: format(new Date(d.timestamp), 'HH:mm'),
+    memGB: parseFloat((d.memory / 1024).toFixed(2)),
+    rxMB: parseFloat((d.networkRx / 1024 / 1024).toFixed(3)),
+    txMB: parseFloat((d.networkTx / 1024 / 1024).toFixed(3)),
+  }));
+
+  // Per-service bar chart data from both sources
+  const serviceBarData = instance.services.map(s => {
+    const cur = serviceMetrics[s.name];
+    return {
+      name: s.name,
+      cpu: cur?.cpu ?? s.cpu,
+      memory: cur?.memory ?? s.memory,
+    };
+  });
 
   return (
-    <div className="space-y-6">
-      {/* Primary Metrics - Gauges */}
-      <div className="bg-card border rounded-lg p-6">
-        <h2 className="text-lg font-semibold mb-6 flex items-center gap-2">
-          <Activity className="w-5 h-5" />
-          Current Resource Usage
-        </h2>
-        <div className="flex justify-center gap-12 flex-wrap">
-          <GaugeChart
-            label="CPU Usage"
-            value={instance.metrics.cpu}
-            icon={Cpu}
-            size="lg"
-          />
-          <GaugeChart
-            label="Memory"
-            value={memoryPercent}
-            displayValue={`${memoryGB.toFixed(1)} GB`}
-            icon={HardDrive}
-            color="green"
-            size="lg"
-          />
+    <div className="space-y-4">
+      {/* Current usage */}
+      <div className="border rounded-lg bg-card p-5">
+        <h2 className="text-sm font-medium mb-4">Current Usage</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <ProgressBar value={cpuPercent} label="CPU Usage" sub={`${cpuPercent.toFixed(1)}%`} />
+          <ProgressBar value={memoryPercent} label="Memory" sub={`${totalMemGB.toFixed(1)} / ${hostMemGB} GB (${memoryPercent.toFixed(0)}%)`} />
         </div>
       </div>
 
-      {/* Secondary Metrics - Cards */}
-      <div className="bg-card border rounded-lg p-6">
-        <h2 className="text-lg font-semibold mb-6">Network & Disk I/O</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {secondaryMetrics.map((metric) => {
-            const Icon = metric.icon;
-            return (
-              <div key={metric.label} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className={`p-2 rounded-lg ${metric.color}`}>
-                    <Icon className="w-5 h-5" />
-                  </div>
-                  <p className="text-sm text-muted-foreground">{metric.label}</p>
-                </div>
-                <p className="text-xl font-bold">{metric.value}</p>
+      {/* I/O metrics */}
+      <div className="border rounded-lg bg-card p-5">
+        <h2 className="text-sm font-medium mb-3">Network & Disk I/O</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { label: 'Net RX', value: ((totalRx ?? 0) / 1024 / 1024).toFixed(1) + ' MB', Icon: Network },
+            { label: 'Net TX', value: ((totalTx ?? 0) / 1024 / 1024).toFixed(1) + ' MB', Icon: TrendingUp },
+            { label: 'Disk Read', value: Object.values(serviceMetrics).reduce((s, m) => s + (m.diskRead ?? 0), 0).toFixed(1) + ' MB', Icon: HardDrive },
+            { label: 'Disk Write', value: Object.values(serviceMetrics).reduce((s, m) => s + (m.diskWrite ?? 0), 0).toFixed(1) + ' MB', Icon: HardDrive },
+          ].map(({ label, value, Icon }) => (
+            <div key={label} className="border rounded-md p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+                <p className="text-xs text-muted-foreground">{label}</p>
               </div>
-            );
-          })}
+              <p className="text-sm font-semibold">{value}</p>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Time Series Trends */}
-      <div className="bg-card border rounded-lg p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Clock className="w-5 h-5" />
+      {/* Time series */}
+      <div className="border rounded-lg bg-card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-medium flex items-center gap-2">
+            <Clock className="w-4 h-4 text-muted-foreground" />
             Resource Trends
           </h2>
-
-          {/* Time Range Selector */}
-          <div className="flex gap-2">
-            {(['1h', '6h', '24h', '7d'] as TimeRange[]).map((range) => (
-              <button
-                key={range}
-                onClick={() => setTimeRange(range)}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                  timeRange === range
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }`}
-              >
-                {range.toUpperCase()}
+          <div className="flex gap-1">
+            {(['1h', '6h', '24h', '7d'] as TimeRange[]).map(r => (
+              <button key={r} onClick={() => setTimeRange(r)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${timeRange === r ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-muted'}`}>
+                {r}
               </button>
             ))}
           </div>
         </div>
 
-        <div className="space-y-8">
-          {/* CPU & Memory Chart */}
-          <div className="border rounded-lg p-4">
-            <LineChart
-              data={historyData || []}
-              lines={[
-                { key: 'cpu', label: 'CPU Usage (%)', color: '#3b82f6' },
-                { key: 'memory', label: 'Memory (MB)', color: '#10b981' },
-              ]}
-              title="CPU & Memory Usage"
-              height={300}
-              loading={historyLoading}
-              tooltipFormatter={(value, name) => {
-                if (name === 'cpu') return `${value.toFixed(1)}%`;
-                if (name === 'memory') return `${value.toFixed(0)} MB`;
-                return value.toFixed(2);
-              }}
-            />
-          </div>
-
-          {/* Network Chart */}
-          <div className="border rounded-lg p-4">
-            <LineChart
-              data={historyData || []}
-              lines={[
-                { key: 'networkRx', label: 'Network RX (MB/s)', color: '#8b5cf6' },
-                { key: 'networkTx', label: 'Network TX (MB/s)', color: '#f97316' },
-              ]}
-              title="Network Traffic"
-              height={250}
-              loading={historyLoading}
-              tooltipFormatter={(value) => `${(value / 1024 / 1024).toFixed(3)} MB/s`}
-              yAxisFormatter={(value) => `${(value / 1024 / 1024).toFixed(1)}`}
-            />
-          </div>
-
-          {/* Disk I/O Chart */}
-          <div className="border rounded-lg p-4">
-            <LineChart
-              data={historyData || []}
-              lines={[
-                { key: 'diskRead', label: 'Disk Read (MB/s)', color: '#06b6d4' },
-                { key: 'diskWrite', label: 'Disk Write (MB/s)', color: '#ec4899' },
-              ]}
-              title="Disk I/O"
-              height={250}
-              loading={historyLoading}
-              tooltipFormatter={(value) => `${(value / 1024 / 1024).toFixed(3)} MB/s`}
-              yAxisFormatter={(value) => `${(value / 1024 / 1024).toFixed(1)}`}
-            />
-          </div>
+        <div className="space-y-4">
+          {historyLoading ? (
+            <div className="h-40 flex items-center justify-center text-sm text-muted-foreground">Loading…</div>
+          ) : chartData.length === 0 ? (
+            <div className="h-40 flex items-center justify-center text-sm text-muted-foreground">No history data yet</div>
+          ) : (
+            <>
+              <div>
+                <p className="text-xs text-muted-foreground mb-2">CPU (%)</p>
+                <ResponsiveContainer width="100%" height={160}>
+                  <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="time" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} width={28} />
+                    <Tooltip contentStyle={chartTooltipStyle} formatter={(v: any) => [`${Number(v).toFixed(1)}%`, 'CPU']} />
+                    <Area type="monotone" dataKey="cpu" stroke="hsl(var(--foreground))" fill="hsl(var(--foreground))" fillOpacity={0.08} strokeWidth={1.5} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-2">Memory (GB)</p>
+                <ResponsiveContainer width="100%" height={160}>
+                  <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="time" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} width={32} />
+                    <Tooltip contentStyle={chartTooltipStyle} formatter={(v: any) => [`${Number(v).toFixed(2)} GB`, 'Memory']} />
+                    <Area type="monotone" dataKey="memGB" stroke="hsl(var(--muted-foreground))" fill="hsl(var(--muted-foreground))" fillOpacity={0.1} strokeWidth={1.5} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-2">Network (MB/s)</p>
+                <ResponsiveContainer width="100%" height={160}>
+                  <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="time" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} width={36} />
+                    <Tooltip contentStyle={chartTooltipStyle} formatter={(v: any) => [`${Number(v).toFixed(3)} MB/s`]} />
+                    <Area type="monotone" dataKey="rxMB" stroke="hsl(var(--foreground))" fill="hsl(var(--foreground))" fillOpacity={0.06} strokeWidth={1.5} dot={false} name="RX" />
+                    <Area type="monotone" dataKey="txMB" stroke="hsl(var(--muted-foreground))" fill="hsl(var(--muted-foreground))" fillOpacity={0.06} strokeWidth={1.5} dot={false} name="TX" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Service Comparison Bar Charts */}
-      <div className="bg-card border rounded-lg p-6">
-        <h2 className="text-lg font-semibold mb-6 flex items-center gap-2">
-          <BarChart3 className="w-5 h-5" />
-          Service Resource Comparison
+      {/* Per-service usage */}
+      <div className="border rounded-lg bg-card p-5">
+        <h2 className="text-sm font-medium mb-4 flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-muted-foreground" />
+          Per-Service Usage
         </h2>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* CPU Comparison */}
-          <div className="border rounded-lg p-4">
-            <BarChart
-              data={instance.services.map((service) => ({
-                name: service.name,
-                cpu: service.cpu,
-              }))}
-              bars={[{ key: 'cpu', label: 'CPU Usage (%)', color: '#3b82f6' }]}
-              title="CPU Usage by Service"
-              height={300}
-              yAxisFormatter={(value) => `${value.toFixed(0)}%`}
-              tooltipFormatter={(value) => `${value.toFixed(1)}%`}
-            />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div>
+            <p className="text-xs text-muted-foreground mb-2">CPU (%)</p>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={serviceBarData} margin={{ top: 4, right: 4, bottom: 20, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} angle={-30} textAnchor="end" />
+                <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} width={28} />
+                <Tooltip contentStyle={chartTooltipStyle} formatter={(v: any) => [`${Number(v).toFixed(1)}%`, 'CPU']} />
+                <Bar dataKey="cpu" fill="hsl(var(--foreground))" fillOpacity={0.8} radius={[2, 2, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
-
-          {/* Memory Comparison */}
-          <div className="border rounded-lg p-4">
-            <BarChart
-              data={instance.services.map((service) => ({
-                name: service.name,
-                memory: service.memory,
-              }))}
-              bars={[{ key: 'memory', label: 'Memory (MB)', color: '#10b981' }]}
-              title="Memory Usage by Service"
-              height={300}
-              yAxisFormatter={(value) => `${value.toFixed(0)}`}
-              tooltipFormatter={(value) => `${value.toFixed(0)} MB`}
-            />
+          <div>
+            <p className="text-xs text-muted-foreground mb-2">Memory (MB)</p>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={serviceBarData} margin={{ top: 4, right: 4, bottom: 20, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} angle={-30} textAnchor="end" />
+                <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} width={36} />
+                <Tooltip contentStyle={chartTooltipStyle} formatter={(v: any) => [`${Number(v).toFixed(0)} MB`, 'Memory']} />
+                <Bar dataKey="memory" fill="hsl(var(--muted-foreground))" fillOpacity={0.6} radius={[2, 2, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>
 
-      {/* Per-Service Metrics Table */}
-      <div className="bg-card border rounded-lg overflow-hidden">
-        <div className="px-6 py-4 border-b bg-muted/30">
-          <h2 className="text-lg font-semibold">Service Metrics Table</h2>
+      {/* Service table */}
+      <div className="border rounded-lg bg-card overflow-hidden">
+        <div className="px-5 py-3 border-b bg-muted/20">
+          <h2 className="text-sm font-medium">Service Details</h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Service
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  CPU
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Memory
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Status
-                </th>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/10">
+                <th className="px-5 py-2.5 text-left text-xs font-medium text-muted-foreground">Service</th>
+                <th className="px-5 py-2.5 text-left text-xs font-medium text-muted-foreground">CPU</th>
+                <th className="px-5 py-2.5 text-left text-xs font-medium text-muted-foreground">Memory</th>
+                <th className="px-5 py-2.5 text-left text-xs font-medium text-muted-foreground">Health</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {instance.services.map((service) => (
-                <tr key={service.name} className="hover:bg-muted/30">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="font-medium">{service.name}</div>
-                    <div className="text-sm text-muted-foreground">{service.containerName}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium">{service.cpu.toFixed(1)}%</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium">{service.memory.toFixed(0)} MB</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                      service.health === 'healthy'
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-red-100 text-red-700'
-                    }`}>
-                      {service.health}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {instance.services.map(service => {
+                const cur = serviceMetrics[service.name];
+                return (
+                  <tr key={service.name} className="hover:bg-muted/20 transition-colors">
+                    <td className="px-5 py-3">
+                      <div className="font-medium text-sm">{service.name}</div>
+                      <div className="text-xs text-muted-foreground font-mono">{service.containerName}</div>
+                    </td>
+                    <td className="px-5 py-3 text-sm text-muted-foreground">{(cur?.cpu ?? service.cpu).toFixed(1)}%</td>
+                    <td className="px-5 py-3 text-sm text-muted-foreground">{(cur?.memory ?? service.memory).toFixed(0)} MB</td>
+                    <td className="px-5 py-3">
+                      <span className="text-xs text-muted-foreground">{service.health || '—'}</span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
-      </div>
-
-      {/* Timestamp */}
-      <div className="text-sm text-muted-foreground text-center">
-        Last updated: {new Date(instance.metrics.timestamp).toLocaleString()}
       </div>
     </div>
   );

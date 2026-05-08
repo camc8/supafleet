@@ -1,0 +1,425 @@
+_format_version: '2.1'
+_transform: true
+
+consumers:
+  - username: DASHBOARD
+  - username: anon
+    keyauth_credentials:
+      - key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE
+  - username: service_role
+    keyauth_credentials:
+      - key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJzZXJ2aWNlX3JvbGUiLAogICAgImlzcyI6ICJzdXBhYmFzZS1kZW1vIiwKICAgICJpYXQiOiAxNjQxNzY5MjAwLAogICAgImV4cCI6IDE3OTk1MzU2MDAKfQ.DaYlNEoUrrEn2Ig7tqibS-PHK5vgusbcbo7X36XVt4Q
+
+acls:
+  - consumer: anon
+    group: anon
+  - consumer: service_role
+    group: admin
+
+basicauth_credentials:
+  - consumer: DASHBOARD
+    username: supabase
+    password: __DASHBOARD_PASSWORD__
+
+services:
+  - name: auth-v1
+    url: http://__PROJECT_NAME__-auth:9999/verify
+    routes:
+      - name: auth-v1-route
+        paths:
+          - /auth/v1/verify
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "https://db.xcorpllc.com"
+            - "https://__SITE_URL__"
+            - "https://__PROJECT_NAME__.__BASE_DOMAIN__"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Requested-With
+            - apikey
+            - x-supabase-api-version
+            - x-client-info
+            - accept-profile
+            - content-profile
+            - prefer
+            - Range
+            - Origin
+            - Referer
+            - Access-Control-Request-Headers
+            - Access-Control-Request-Method
+          exposed_headers:
+            - Content-Length
+            - Content-Range
+            - accept-ranges
+            - Content-Type
+            - Content-Profile
+            - Range-Unit
+          credentials: true
+          max_age: 3600
+  - name: auth-v1-api
+    url: http://__PROJECT_NAME__-auth:9999
+    routes:
+      - name: auth-v1-api-route
+        paths:
+          - /auth/v1
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "https://db.xcorpllc.com"
+            - "https://__SITE_URL__"
+            - "https://__PROJECT_NAME__.__BASE_DOMAIN__"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Requested-With
+            - apikey
+            - x-supabase-api-version
+            - x-client-info
+            - accept-profile
+            - content-profile
+            - prefer
+            - Range
+            - Origin
+            - Referer
+            - Access-Control-Request-Headers
+            - Access-Control-Request-Method
+          exposed_headers:
+            - Content-Length
+            - Content-Range
+            - accept-ranges
+            - Content-Type
+            - Content-Profile
+            - Range-Unit
+          credentials: true
+          max_age: 3600
+  - name: auth-v1-admin
+    url: http://__PROJECT_NAME__-auth:9999/admin
+    routes:
+      - name: auth-v1-admin-route
+        paths:
+          - /auth/v1/admin
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "https://db.xcorpllc.com"
+            - "https://__SITE_URL__"
+            - "https://__PROJECT_NAME__.__BASE_DOMAIN__"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Requested-With
+            - apikey
+            - x-supabase-api-version
+            - x-client-info
+            - accept-profile
+            - content-profile
+            - prefer
+            - Range
+            - Origin
+            - Referer
+            - Access-Control-Request-Headers
+            - Access-Control-Request-Method
+          exposed_headers:
+            - Content-Length
+            - Content-Range
+            - accept-ranges
+            - Content-Type
+            - Content-Profile
+            - Range-Unit
+          credentials: true
+          max_age: 3600
+      - name: key-auth
+        config:
+          hide_credentials: true
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - admin
+  - name: rest
+    url: http://__PROJECT_NAME__-rest:3000
+    routes:
+      - name: rest-route
+        paths:
+          - /rest/v1
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "https://db.xcorpllc.com"
+            - "https://__SITE_URL__"
+            - "https://__PROJECT_NAME__.__BASE_DOMAIN__"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Requested-With
+            - apikey
+            - x-supabase-api-version
+            - x-client-info
+            - accept-profile
+            - content-profile
+            - prefer
+            - Range
+            - Origin
+            - Referer
+            - Access-Control-Request-Headers
+            - Access-Control-Request-Method
+          exposed_headers:
+            - Content-Length
+            - Content-Range
+            - accept-ranges
+            - Content-Type
+            - Content-Profile
+            - Range-Unit
+          credentials: true
+          max_age: 3600
+  - name: postgrest
+    url: http://__PROJECT_NAME__-rest:3000
+    routes:
+      - name: postgrest-route
+        paths:
+          - /
+        strip_path: false
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "https://db.xcorpllc.com"
+            - "https://__SITE_URL__"
+            - "https://__PROJECT_NAME__.__BASE_DOMAIN__"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Requested-With
+            - apikey
+            - x-supabase-api-version
+            - x-client-info
+            - accept-profile
+            - content-profile
+          exposed_headers:
+            - Content-Length
+            - Content-Range
+          credentials: true
+          max_age: 3600
+  - name: realtime
+    url: http://__PROJECT_NAME__-realtime:4000/socket/
+    routes:
+      - name: realtime-route
+        paths:
+          - /realtime/v1
+        strip_path: true
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "https://db.xcorpllc.com"
+            - "https://__SITE_URL__"
+            - "https://__PROJECT_NAME__.__BASE_DOMAIN__"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Requested-With
+            - apikey
+            - x-supabase-api-version
+            - x-client-info
+            - accept-profile
+            - content-profile
+          exposed_headers:
+            - Content-Length
+            - Content-Range
+          credentials: true
+          max_age: 3600
+          
+  - name: realtime-api
+    url: http://__PROJECT_NAME__-realtime:4000
+    routes:
+      - name: realtime-api-route
+        paths:
+          - /api/tenants/realtime-dev
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "https://db.xcorpllc.com"
+            - "https://__SITE_URL__"
+            - "https://__PROJECT_NAME__.__BASE_DOMAIN__"
+          methods:
+            - GET
+            - HEAD
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - apikey
+          exposed_headers:
+            - Content-Length
+            - Content-Range
+          credentials: true
+          max_age: 3600
+  - name: storage
+    url: http://__PROJECT_NAME__-storage:5000
+    routes:
+      - name: storage-route
+        paths:
+          - /storage/v1
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "https://db.xcorpllc.com"
+            - "https://__SITE_URL__"
+            - "https://__PROJECT_NAME__.__BASE_DOMAIN__"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Requested-With
+            - apikey
+            - x-supabase-api-version
+            - x-client-info
+            - accept-profile
+            - content-profile
+          exposed_headers:
+            - Content-Length
+            - Content-Range
+          credentials: true
+          max_age: 3600
+  - name: meta
+    url: http://__PROJECT_NAME__-meta:8080
+    routes:
+      - name: meta-route
+        paths:
+          - /pg
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "https://db.xcorpllc.com"
+            - "https://__SITE_URL__"
+            - "https://__PROJECT_NAME__.__BASE_DOMAIN__"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Requested-With
+            - apikey
+            - x-supabase-api-version
+            - x-client-info
+            - accept-profile
+            - content-profile
+          exposed_headers:
+            - Content-Length
+            - Content-Range
+          credentials: true
+          max_age: 3600
+      - name: key-auth
+        config:
+          hide_credentials: true
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - admin
+  - name: functions
+    url: http://__PROJECT_NAME__-edge-functions:9000
+    routes:
+      - name: functions-route
+        paths:
+          - /functions/v1
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "https://db.xcorpllc.com"
+            - "https://__SITE_URL__"
+            - "https://__PROJECT_NAME__.__BASE_DOMAIN__"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Requested-With
+            - apikey
+            - x-supabase-api-version
+            - x-client-info
+            - accept-profile            
+            - content-profile
+          exposed_headers:
+            - Content-Length
+            - Content-Range
+          credentials: true
+          max_age: 3600

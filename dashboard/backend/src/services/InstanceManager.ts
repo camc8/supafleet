@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import yaml from 'js-yaml';
 import { CreateInstanceRequest, SupabaseInstance, InstanceCredentials, PortMapping } from '../types';
 import { generateAllKeys } from '../utils/keyGenerator';
 import { calculatePorts, getRandomBasePort } from '../utils/portManager';
@@ -22,31 +21,23 @@ export class InstanceManager {
     this.templatesPath = path.resolve(path.join(projectsPath, '..'));
     this.dockerManager = dockerManager;
 
-    // Ensure projects directory exists
     if (!fs.existsSync(this.projectsPath)) {
       fs.mkdirSync(this.projectsPath, { recursive: true });
       logger.info(`Created projects directory: ${this.projectsPath}`);
     }
   }
 
-  /**
-   * List all Supabase instances
-   */
   async listInstances(): Promise<SupabaseInstance[]> {
     try {
-      if (!fs.existsSync(this.projectsPath)) {
-        return [];
-      }
+      if (!fs.existsSync(this.projectsPath)) return [];
 
       const projectDirs = fs.readdirSync(this.projectsPath, { withFileTypes: true })
         .filter(dirent => dirent.isDirectory())
         .map(dirent => dirent.name);
 
-      // Parallelize instance loading for better performance
       const instancePromises = projectDirs.map(async (projectName) => {
         try {
-          const instance = await this.getInstance(projectName);
-          return instance;
+          return await this.getInstance(projectName);
         } catch (error) {
           logger.warn(`Error loading instance ${projectName}:`, error);
           return null;
@@ -54,53 +45,43 @@ export class InstanceManager {
       });
 
       const results = await Promise.all(instancePromises);
-      const instances = results.filter((instance): instance is SupabaseInstance => instance !== null);
-
-      return instances;
+      return results.filter((i): i is SupabaseInstance => i !== null);
     } catch (error) {
       logger.error('Error listing instances:', error);
       throw error;
     }
   }
 
-  /**
-   * Get a specific instance by name
-   */
   async getInstance(name: string): Promise<SupabaseInstance | null> {
     try {
       const projectPath = path.join(this.projectsPath, name);
       const envPath = path.join(projectPath, '.env');
 
-      if (!fs.existsSync(projectPath) || !fs.existsSync(envPath)) {
-        return null;
-      }
+      if (!fs.existsSync(projectPath) || !fs.existsSync(envPath)) return null;
 
-      // Parse .env file
       const envConfig = parseEnvFile(envPath);
       const credentials = extractCredentials(envConfig);
       const ports = extractPorts(envConfig);
-
-      // Get service status from Docker
       const services = await this.dockerManager.getServiceStatus(name);
 
-      // Calculate health status
-      const healthyServices = services.filter(s => s.health === 'healthy').length;
+      const runningServices = services.filter(s => s.status === 'running').length;
       const totalServices = services.length;
+      // Only count services with an actual health check (not 'none') configured
+      const healthChecked = services.filter(s => s.status === 'running' && (s.health === 'healthy' || s.health === 'unhealthy'));
+      const healthyServices = healthChecked.filter(s => s.health === 'healthy').length;
+      const unhealthyServices = healthChecked.filter(s => s.health === 'unhealthy').length;
 
       let overallStatus: 'healthy' | 'degraded' | 'unhealthy' | 'stopped' = 'stopped';
-      const runningServices = services.filter(s => s.status === 'running').length;
-
       if (runningServices === 0) {
         overallStatus = 'stopped';
-      } else if (healthyServices === totalServices) {
-        overallStatus = 'healthy';
+      } else if (unhealthyServices === 0) {
+        overallStatus = 'healthy'; // All running services healthy or no health check configured
       } else if (healthyServices > 0) {
-        overallStatus = 'degraded';
+        overallStatus = 'degraded'; // Mix of healthy and unhealthy
       } else {
-        overallStatus = 'unhealthy';
+        overallStatus = 'unhealthy'; // All health-checked services are unhealthy
       }
 
-      // Get created/updated timestamps from directory stats
       const stats = fs.statSync(projectPath);
 
       return {
@@ -126,20 +107,15 @@ export class InstanceManager {
     }
   }
 
-  /**
-   * Create a new Supabase instance
-   */
   async createInstance(request: CreateInstanceRequest): Promise<SupabaseInstance> {
     const { name, basePort, deploymentType, domain, protocol, corsOrigins } = request;
 
     logger.info(`Creating new instance: ${name}`);
 
-    // Validate name
     if (!/^[a-z0-9-]+$/.test(name)) {
       throw new Error('Instance name must contain only lowercase letters, numbers, and hyphens');
     }
 
-    // Check if instance already exists
     const existing = await this.getInstance(name);
     if (existing) {
       throw new Error(`Instance ${name} already exists`);
@@ -148,67 +124,54 @@ export class InstanceManager {
     const projectPath = path.join(this.projectsPath, name);
 
     try {
-      // Create project directory
       fs.mkdirSync(projectPath, { recursive: true });
       logger.info(`Created project directory: ${projectPath}`);
 
-      // Calculate ports
       const finalBasePort = basePort || getRandomBasePort();
       const ports = await calculatePorts(finalBasePort);
-
-      // Generate secure keys
       const keys = generateAllKeys();
 
-      // Determine URLs
       const projectDomain = domain || 'localhost';
       const projectProtocol = protocol || (deploymentType === 'localhost' ? 'http' : 'https');
+
+      
       const apiExternalUrl = deploymentType === 'localhost'
         ? `${projectProtocol}://${projectDomain}:${ports.kong_http}`
-        : `${projectProtocol}://${projectDomain}`;
+        : `${projectProtocol}://${name}.${projectDomain}`;
 
       const studioUrl = deploymentType === 'localhost'
         ? `http://localhost:${ports.studio}`
-        : `https://studio.${projectDomain}`;
+        : `https://${name}.${projectDomain}/studio`;
 
-      // Create .env file
-      const envConfig = this.generateEnvConfig(
-        name,
-        ports,
-        keys,
-        apiExternalUrl,
-        studioUrl,
-        corsOrigins || []
-      );
-
+      const envConfig = this.generateEnvConfig(name, ports, keys, apiExternalUrl, studioUrl, corsOrigins || []);
       const envPath = path.join(projectPath, '.env');
       writeEnvFile(envPath, envConfig);
 
-      // Copy docker-compose template
       await this.copyDockerComposeTemplate(projectPath, name);
-
-      // Create volumes directory structure
       this.createVolumesStructure(projectPath, name);
-
-      // Copy Kong configuration
-      await this.createKongConfig(projectPath, apiExternalUrl, corsOrigins || []);
-
-      // Copy Vector configuration
+      await this.createKongConfig(projectPath, name, keys, apiExternalUrl, corsOrigins || []);
       await this.copyVectorConfig(projectPath, name);
-
-      // Create docker-compose.override.yml for Kong YAML parsing
+      this.copyPoolerConfig(projectPath, name);
       await this.createDockerComposeOverride(projectPath);
 
-      logger.info(`Successfully created instance: ${name}`);
+      // Auto-start the instance
+      logger.info(`Starting instance: ${name}`);
+      await this.startInstance(name);
 
-      // Get and return the created instance
-      const instance = await this.getInstance(name);
-      if (!instance) {
-        throw new Error('Failed to retrieve created instance');
+      // Setup nginx routing
+      try {
+        await this.setupNginx(name, ports.kong_http, ports.studio);
+      } catch (err) {
+        logger.warn(`Nginx setup failed (non-fatal): ${err}`);
       }
+
+      logger.info(`Successfully created and started instance: ${name}`);
+
+      const instance = await this.getInstance(name);
+      if (!instance) throw new Error('Failed to retrieve created instance');
 
       return instance;
     } catch (error) {
-      // Cleanup on failure
       if (fs.existsSync(projectPath)) {
         fs.rmSync(projectPath, { recursive: true, force: true });
       }
@@ -217,9 +180,6 @@ export class InstanceManager {
     }
   }
 
-  /**
-   * Generate .env configuration
-   */
   private generateEnvConfig(
     projectName: string,
     ports: PortMapping,
@@ -228,12 +188,10 @@ export class InstanceManager {
     studioUrl: string,
     corsOrigins: string[]
   ): Record<string, string> {
-    const corsOriginsStr = corsOrigins.length > 0
-      ? corsOrigins.join(',')
-      : apiExternalUrl;
+    const corsOriginsStr = corsOrigins.length > 0 ? corsOrigins.join(',') : apiExternalUrl;
 
     return {
-      // Project Info
+      // Project
       PROJECT_NAME: projectName,
 
       // Ports
@@ -252,6 +210,7 @@ export class InstanceManager {
 
       // JWT
       JWT_SECRET: keys.jwt_secret,
+      JWT_EXPIRY: '3600',
       ANON_KEY: keys.anon_key,
       SERVICE_ROLE_KEY: keys.service_role_key,
 
@@ -259,7 +218,7 @@ export class InstanceManager {
       DASHBOARD_USERNAME: keys.dashboard_username,
       DASHBOARD_PASSWORD: keys.dashboard_password,
 
-      // URLs
+      // URLs (path-based routing)
       API_EXTERNAL_URL: apiExternalUrl,
       SUPABASE_PUBLIC_URL: apiExternalUrl,
       PUBLIC_REST_URL: apiExternalUrl,
@@ -272,11 +231,20 @@ export class InstanceManager {
       // Auth
       SITE_URL: apiExternalUrl,
       ADDITIONAL_REDIRECT_URLS: '',
-      JWT_EXPIRY: '3600',
       DISABLE_SIGNUP: 'false',
-      API_EXTERNAL_URL_FINAL: apiExternalUrl,
+      ENABLE_EMAIL_SIGNUP: 'true',
+      ENABLE_EMAIL_AUTOCONFIRM: 'true',
+      ENABLE_ANONYMOUS_USERS: 'false',
+      ENABLE_PHONE_SIGNUP: 'true',
+      ENABLE_PHONE_AUTOCONFIRM: 'true',
 
-      // Email (can be configured later)
+      // Mailer paths
+      MAILER_URLPATHS_CONFIRMATION: '/auth/v1/verify',
+      MAILER_URLPATHS_INVITE: '/auth/v1/verify',
+      MAILER_URLPATHS_RECOVERY: '/auth/v1/verify',
+      MAILER_URLPATHS_EMAIL_CHANGE: '/auth/v1/verify',
+
+      // SMTP (configure later)
       SMTP_ADMIN_EMAIL: 'admin@example.com',
       SMTP_HOST: 'smtp.example.com',
       SMTP_PORT: '587',
@@ -288,6 +256,23 @@ export class InstanceManager {
       STORAGE_BACKEND: 'file',
       STORAGE_FILE_PATH: '/var/lib/storage',
       GLOBAL_S3_BUCKET: '',
+      IMGPROXY_ENABLE_WEBP_DETECTION: 'TRUE',
+
+      // Pooler
+      POOLER_POOL_MODE: 'transaction',
+      POOLER_PROXY_PORT_TRANSACTION: `${ports.pooler}`,
+      POOLER_DEFAULT_POOL_SIZE: '20',
+      POOLER_MAX_CLIENT_CONN: '100',
+      POOLER_TENANT_ID: `${projectName}-tenant`,
+
+      // PostgREST
+      PGRST_DB_SCHEMAS: 'public,storage,graphql_public',
+
+      // Edge functions
+      FUNCTIONS_VERIFY_JWT: 'false',
+
+      // Docker socket
+      DOCKER_SOCKET_LOCATION: '/var/run/docker.sock',
 
       // Secrets
       SECRET_KEY_BASE: keys.secret_key_base,
@@ -303,15 +288,12 @@ export class InstanceManager {
       REALTIME_TENANT_ID: 'realtime-dev',
       REALTIME_MAX_CONCURRENT_USERS: '200',
 
-      // Rate Limiting
+      // Rate limiting
       RATE_LIMIT_ANON: '100',
       RATE_LIMIT_AUTHENTICATED: '200'
     };
   }
 
-  /**
-   * Copy and customize docker-compose template
-   */
   private async copyDockerComposeTemplate(projectPath: string, projectName: string): Promise<void> {
     const templatePath = path.join(this.templatesPath, 'docker-compose.yml');
     const targetPath = path.join(projectPath, 'docker-compose.yml');
@@ -321,64 +303,65 @@ export class InstanceManager {
     // Update project name
     content = content.replace(/^name: supabase$/m, `name: ${projectName}`);
 
-    // Update container names
-    content = content.replace(/container_name: supabase-/g, `container_name: ${projectName}-`);
-
-    // Special case for realtime container (must preserve the realtime-dev. prefix)
+    // Update container names (handle realtime special case first)
     content = content.replace(
-      /container_name: supabase-realtime$/gm,
+      /container_name: supabase-realtime/g,
       `container_name: realtime-dev.${projectName}-realtime`
     );
-
-    // Update volume paths to be relative to project directory
-    content = content.replace(/\.\/volumes\//g, './volumes/');
+    content = content.replace(/container_name: supabase-/g, `container_name: ${projectName}-`);
 
     fs.writeFileSync(targetPath, content, 'utf8');
     logger.info(`Created docker-compose.yml for ${projectName}`);
   }
 
-  /**
-   * Create volumes directory structure
-   */
   private createVolumesStructure(projectPath: string, projectName: string): void {
     const volumesPath = path.join(projectPath, 'volumes');
-    const dirs = [
-      'db/data',
-      'db/init',
-      'storage',
-      'functions',
-      'logs',
-      'api',
-      'pooler',
-      'analytics'
-    ];
+    const dirs = ['db/data', 'storage', 'functions/main', 'logs', 'api', 'pooler', 'analytics', 'studio'];
 
     dirs.forEach(dir => {
-      const fullPath = path.join(volumesPath, dir);
-      fs.mkdirSync(fullPath, { recursive: true });
+      fs.mkdirSync(path.join(volumesPath, dir), { recursive: true });
     });
 
-    // Copy SQL init scripts
-    const templateInitPath = path.join(this.templatesPath, 'volumes/db');
-    const targetInitPath = path.join(volumesPath, 'db');
+    // Copy SQL init scripts from template (these run as postgres init scripts on first start)
+    const templateDbPath = path.join(this.templatesPath, 'volumes/db');
+    const targetDbPath = path.join(volumesPath, 'db');
 
-    if (fs.existsSync(templateInitPath)) {
-      const sqlFiles = fs.readdirSync(templateInitPath).filter(f => f.endsWith('.sql'));
+    if (fs.existsSync(templateDbPath)) {
+      const sqlFiles = fs.readdirSync(templateDbPath).filter(f => f.endsWith('.sql'));
+      if (sqlFiles.length === 0) {
+        logger.warn('No SQL template files found — DB init scripts will be missing');
+      }
       sqlFiles.forEach(file => {
-        fs.copyFileSync(
-          path.join(templateInitPath, file),
-          path.join(targetInitPath, file)
-        );
+        fs.copyFileSync(path.join(templateDbPath, file), path.join(targetDbPath, file));
       });
+      logger.info(`Copied ${sqlFiles.length} SQL init scripts for ${projectName}`);
+    } else {
+      logger.warn(`Template db path not found: ${templateDbPath}`);
+    }
+
+    // Copy edge functions main entry point
+    const templateFnMain = path.join(this.templatesPath, 'volumes/functions/main/index.ts');
+    if (fs.existsSync(templateFnMain)) {
+      fs.copyFileSync(templateFnMain, path.join(volumesPath, 'functions/main/index.ts'));
+    }
+
+    // Copy studio-start.sh (resets basePath so studio works at root path)
+    const templateStudioScript = path.join(this.templatesPath, 'volumes/studio/studio-start.sh');
+    if (fs.existsSync(templateStudioScript)) {
+      fs.copyFileSync(templateStudioScript, path.join(volumesPath, 'studio/studio-start.sh'));
+      fs.chmodSync(path.join(volumesPath, 'studio/studio-start.sh'), 0o755);
     }
 
     logger.info(`Created volumes structure for ${projectName}`);
   }
 
-  /**
-   * Create Kong configuration
-   */
-  private async createKongConfig(projectPath: string, apiUrl: string, corsOrigins: string[]): Promise<void> {
+  private async createKongConfig(
+    projectPath: string,
+    projectName: string,
+    keys: ReturnType<typeof generateAllKeys>,
+    apiExternalUrl: string,
+    corsOrigins: string[]
+  ): Promise<void> {
     const templatePath = path.join(this.templatesPath, 'volumes/api/kong.yml');
     const targetPath = path.join(projectPath, 'volumes/api/kong.yml');
 
@@ -387,27 +370,21 @@ export class InstanceManager {
       return;
     }
 
-    let content = fs.readFileSync(templatePath, 'utf8');
+    let kongContent = fs.readFileSync(templatePath, 'utf8');
+    kongContent = kongContent.replace(/__PROJECT_NAME__/g, projectName);
+    kongContent = kongContent.replace(/__ANON_KEY__/g, keys.anon_key);
+    kongContent = kongContent.replace(/__SERVICE_ROLE_KEY__/g, keys.service_role_key);
+    kongContent = kongContent.replace(/__CORS_ORIGIN__/g, apiExternalUrl);
 
-    // Update CORS origins if specified
-    if (corsOrigins.length > 0) {
-      const originsStr = corsOrigins.join(',');
-      content = content.replace(
-        /origins: .*/,
-        `origins: ${originsStr}`
-      );
-    }
-
-    fs.writeFileSync(targetPath, content, 'utf8');
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fs.writeFileSync(targetPath, kongContent, 'utf8');
     logger.info('Created Kong configuration');
   }
 
-  /**
-   * Copy Vector logging configuration
-   */
   private async copyVectorConfig(projectPath: string, projectName: string): Promise<void> {
-    const templatePath = path.join(this.templatesPath, 'vector.yml');
-    const targetPath = path.join(projectPath, 'vector.yml');
+    const templatePath = path.join(this.templatesPath, 'volumes/logs/vector.yml');
+    // Target must be volumes/logs/vector.yml (docker-compose mounts ./volumes/logs/vector.yml)
+    const targetPath = path.join(projectPath, 'volumes/logs/vector.yml');
 
     if (!fs.existsSync(templatePath)) {
       logger.warn('Vector template not found, skipping');
@@ -416,22 +393,48 @@ export class InstanceManager {
 
     let content = fs.readFileSync(templatePath, 'utf8');
 
-    // Update container names in vector config
+    // Replace __PROJECT__ placeholder with the actual project name
+    content = content.replace(/__PROJECT__/g, projectName);
+    // Also replace any remaining supabase- prefixes
     content = content.replace(/supabase-/g, `${projectName}-`);
 
     fs.writeFileSync(targetPath, content, 'utf8');
-    logger.info('Created Vector configuration');
+    logger.info(`Created Vector configuration for ${projectName}`);
   }
 
-  /**
-   * Create docker-compose.override.yml for Kong YAML parsing fix
-   */
+  private copyPoolerConfig(projectPath: string, projectName: string): void {
+    const templatePath = path.join(this.templatesPath, 'volumes/pooler/pooler.exs');
+    const targetPath = path.join(projectPath, 'volumes/pooler/pooler.exs');
+
+    if (!fs.existsSync(templatePath)) {
+      logger.warn('Pooler template not found, skipping');
+      return;
+    }
+
+    let content = fs.readFileSync(templatePath, 'utf8');
+
+    // Replace the Python-style placeholder with the actual project name
+    // pooler.exs uses "{self.project_name}-db" as db_host
+    content = content.replace(/\{self\.project_name\}/g, projectName);
+
+    fs.writeFileSync(targetPath, content, 'utf8');
+    logger.info(`Created pooler configuration for ${projectName}`);
+  }
+
   private async createDockerComposeOverride(projectPath: string): Promise<void> {
-    const overrideContent = `# Override for Kong YAML environment variable substitution
-services:
+    // Disable analytics and vector by default — they consume ~500MB each and aren't needed for core functionality
+    const overrideContent = `services:
   kong:
     volumes:
       - ./volumes/api/kong.yml:/home/kong/temp.yml:ro
+  studio:
+    volumes:
+      - ./volumes/studio/studio-start.sh:/studio-start.sh:ro
+    entrypoint: /studio-start.sh
+  analytics:
+    restart: "no"
+  vector:
+    restart: "no"
 `;
 
     const targetPath = path.join(projectPath, 'docker-compose.override.yml');
@@ -439,9 +442,22 @@ services:
     logger.info('Created docker-compose.override.yml');
   }
 
-  /**
-   * Start an instance
-   */
+  async setupNginx(name: string, kongPort: number, studioPort: number): Promise<void> {
+    const { execSync } = require('child_process');
+
+    const baseDomain = process.env.BASE_DOMAIN || 'db.yourdomain.com';
+    const studioPortsDir = '/etc/nginx/multibase-studio-ports';
+    if (!fs.existsSync(studioPortsDir)) fs.mkdirSync(studioPortsDir, { recursive: true });
+    fs.writeFileSync(`${studioPortsDir}/${name}.conf`, `${name}.${baseDomain} ${studioPort};`);
+
+    const kongPortsDir = '/etc/nginx/multibase-kong-ports';
+    if (!fs.existsSync(kongPortsDir)) fs.mkdirSync(kongPortsDir, { recursive: true });
+    fs.writeFileSync(`${kongPortsDir}/${name}.conf`, `${name}.${baseDomain} ${kongPort};`);
+
+    execSync('nginx -t && systemctl reload nginx', { timeout: 15000 });
+    logger.info(`Nginx configured: https://${name}.${baseDomain} → studio:${studioPort}, kong:${kongPort}`);
+  }
+
   async startInstance(name: string): Promise<void> {
     const projectPath = path.join(this.projectsPath, name);
 
@@ -452,11 +468,9 @@ services:
     try {
       logger.info(`Starting instance: ${name}`);
       const { stdout, stderr } = await execAsync('docker compose up -d', { cwd: projectPath });
-
-      if (stderr && !stderr.includes('Creating') && !stderr.includes('Starting')) {
+      if (stderr && !stderr.includes('Creating') && !stderr.includes('Starting') && !stderr.includes('Running') && !stderr.includes('Network') && !stderr.includes('Container')) {
         logger.warn(`Docker compose stderr: ${stderr}`);
       }
-
       logger.info(`Successfully started instance: ${name}`);
       logger.debug(stdout);
     } catch (error) {
@@ -465,9 +479,6 @@ services:
     }
   }
 
-  /**
-   * Stop an instance
-   */
   async stopInstance(name: string, keepVolumes: boolean = true): Promise<void> {
     const projectPath = path.join(this.projectsPath, name);
 
@@ -479,11 +490,7 @@ services:
       logger.info(`Stopping instance: ${name}`);
       const command = keepVolumes ? 'docker compose stop' : 'docker compose down -v';
       const { stdout, stderr } = await execAsync(command, { cwd: projectPath });
-
-      if (stderr) {
-        logger.warn(`Docker compose stderr: ${stderr}`);
-      }
-
+      if (stderr) logger.warn(`Docker compose stderr: ${stderr}`);
       logger.info(`Successfully stopped instance: ${name}`);
       logger.debug(stdout);
     } catch (error) {
@@ -492,17 +499,11 @@ services:
     }
   }
 
-  /**
-   * Restart an instance
-   */
   async restartInstance(name: string): Promise<void> {
     await this.stopInstance(name);
     await this.startInstance(name);
   }
 
-  /**
-   * Delete an instance
-   */
   async deleteInstance(name: string, removeVolumes: boolean = false): Promise<void> {
     const projectPath = path.join(this.projectsPath, name);
 
@@ -513,7 +514,6 @@ services:
     try {
       logger.info(`Deleting instance: ${name}`);
 
-      // Stop and remove containers
       try {
         const command = removeVolumes ? 'docker compose down -v' : 'docker compose down';
         await execAsync(command, { cwd: projectPath });
@@ -521,9 +521,7 @@ services:
         logger.warn('Error stopping containers, continuing with deletion:', error);
       }
 
-      // Remove project directory
       fs.rmSync(projectPath, { recursive: true, force: true });
-
       logger.info(`Successfully deleted instance: ${name}`);
     } catch (error) {
       logger.error(`Error deleting instance ${name}:`, error);
@@ -531,9 +529,6 @@ services:
     }
   }
 
-  /**
-   * Update instance credentials
-   */
   async updateCredentials(name: string, regenerateKeys: boolean = false): Promise<InstanceCredentials> {
     const projectPath = path.join(this.projectsPath, name);
     const envPath = path.join(projectPath, '.env');
@@ -544,15 +539,10 @@ services:
 
     try {
       logger.info(`Updating credentials for instance: ${name}`);
-
-      // Backup current .env
       backupEnvFile(envPath);
-
-      // Parse current config
       const envConfig = parseEnvFile(envPath);
 
       if (regenerateKeys) {
-        // Generate new keys
         const keys = generateAllKeys();
         envConfig.JWT_SECRET = keys.jwt_secret;
         envConfig.ANON_KEY = keys.anon_key;
@@ -560,11 +550,8 @@ services:
         envConfig.POSTGRES_PASSWORD = keys.postgres_password;
       }
 
-      // Write updated config
       writeEnvFile(envPath, envConfig);
-
       logger.info(`Successfully updated credentials for ${name}`);
-
       return extractCredentials(envConfig);
     } catch (error) {
       logger.error(`Error updating credentials for ${name}:`, error);

@@ -1,3 +1,24 @@
+
+function demuxDockerLogs(buffer: Buffer): string {
+  const parts: string[] = [];
+  let i = 0;
+  while (i < buffer.length) {
+    if (i + 8 > buffer.length) break;
+    const size = buffer.readUInt32BE(i + 4);
+    i += 8;
+    if (size > 0 && i + size <= buffer.length) {
+      parts.push(buffer.slice(i, i + size).toString('utf8'));
+      i += size;
+    } else if (size === 0) {
+      continue;
+    } else {
+      break;
+    }
+  }
+  if (parts.length === 0) return buffer.toString('utf8');
+  return parts.join('').replace(/\n$/, '');
+}
+
 import Docker from 'dockerode';
 import { DockerContainerInfo, ContainerStats, ServiceStatus, ResourceMetrics } from '../types';
 import { logger } from '../utils/logger';
@@ -262,7 +283,8 @@ export class DockerManager {
         timestamps: options.timestamps !== false
       });
 
-      return logs.toString('utf8');
+      const buf = logs instanceof Buffer ? logs : Buffer.from(logs as any);
+      return demuxDockerLogs(buf);
     } catch (error) {
       logger.error(`Error getting logs for container ${containerId}:`, error);
       throw error;
