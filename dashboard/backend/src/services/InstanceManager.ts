@@ -173,8 +173,15 @@ export class InstanceManager {
       return instance;
     } catch (error) {
       if (fs.existsSync(projectPath)) {
+        try { await execAsync('docker compose down -v', { cwd: projectPath }); } catch {}
         fs.rmSync(projectPath, { recursive: true, force: true });
       }
+      // Clean up any dangling containers that weren't covered by compose down
+      try {
+        const { execSync } = require('child_process');
+        execSync(`docker ps -a -q --filter name=^/${name}- | xargs -r docker rm -f`, { stdio: 'ignore' });
+        execSync("docker ps -a -q --filter name=realtime-dev." + name + "-realtime | xargs -r docker rm -f", { stdio: "pipe", shell: true });
+      } catch {}
       logger.error(`Error creating instance ${name}:`, error);
       throw error;
     }
@@ -227,6 +234,7 @@ export class InstanceManager {
       // Studio
       STUDIO_DEFAULT_ORGANIZATION: projectName,
       STUDIO_DEFAULT_PROJECT: projectName,
+      STUDIO_BASE_PATH: '',
 
       // Auth
       SITE_URL: apiExternalUrl,
@@ -305,7 +313,7 @@ export class InstanceManager {
 
     // Update container names (handle realtime special case first)
     content = content.replace(
-      /container_name: supabase-realtime/g,
+      /container_name: realtime-dev.supabase-realtime/g,
       `container_name: realtime-dev.${projectName}-realtime`
     );
     content = content.replace(/container_name: supabase-/g, `container_name: ${projectName}-`);
