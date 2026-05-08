@@ -1,22 +1,28 @@
-import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { Plus, Moon, Sun } from 'lucide-react';
 import { useInstances, useSystemMetrics } from '../hooks/useInstances';
 import type { SupabaseInstance } from '../types';
 import CreateInstanceModal from './CreateInstanceModal';
+import { useState } from 'react';
 
 function StatusDot({ status }: { status: string }) {
   return (
     <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${
-      status === 'healthy' ? 'bg-green-400' :
-      status === 'degraded' ? 'bg-yellow-400' :
-      status === 'unhealthy' ? 'bg-red-400' :
-      'bg-gray-600'
+      status === 'healthy' ? 'bg-green-500 dark:bg-green-400' :
+      status === 'degraded' ? 'bg-yellow-500 dark:bg-yellow-400' :
+      status === 'unhealthy' ? 'bg-red-500 dark:bg-red-400' :
+      'bg-gray-300 dark:bg-gray-600'
     }`} />
   );
 }
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+interface LayoutProps {
+  children: React.ReactNode;
+  toggleDark: () => void;
+  dark: boolean;
+}
+
+export default function Layout({ children, toggleDark, dark }: LayoutProps) {
   const location = useLocation();
   const { data: instances } = useInstances();
   const { data: systemMetrics } = useSystemMetrics();
@@ -26,26 +32,33 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const memPercent = host?.memPercent ?? 0;
 
   return (
-    <div className="flex h-screen bg-gray-950 text-white overflow-hidden">
+    <div className="flex h-screen bg-background text-foreground overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-60 flex flex-col border-r border-gray-800 flex-shrink-0">
+      <aside className="w-60 flex flex-col border-r border-border flex-shrink-0 bg-card">
         {/* Logo */}
-        <div className="px-4 py-4 border-b border-gray-800">
+        <div className="px-4 py-4 border-b border-border flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3">
             <img src="/supafleet-icon.png" className="h-10 w-10 rounded-xl" alt="Supafleet" />
-            <span style={{fontFamily: '"Playfair Display", serif'}} className="text-xl tracking-tight">Supafleet</span>
+            <span className="text-lg font-semibold tracking-tight">Supafleet</span>
           </Link>
+          <button
+            onClick={toggleDark}
+            className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+            title="Toggle theme"
+          >
+            {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
         </div>
 
         {/* Instance list */}
         <div className="flex-1 overflow-auto py-3 min-h-0">
           <div className="px-3 flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-500 uppercase tracking-wide px-1">Instances</span>
+            <span className="text-xs text-muted-foreground uppercase tracking-wide px-1">Instances</span>
             <button
               onClick={() => setIsCreateOpen(true)}
-              className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-2 py-1 rounded transition-colors"
+              className="text-xs bg-muted hover:bg-accent text-muted-foreground px-2 py-1 rounded transition-colors flex items-center gap-1"
             >
-              + New
+              <Plus className="w-3 h-3" /> New
             </button>
           </div>
           <div className="space-y-0.5 px-2">
@@ -57,8 +70,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   to={`/instances/${inst.name}`}
                   className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors ${
                     isActive
-                      ? 'bg-gray-800 text-gray-100'
-                      : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900'
+                      ? 'bg-accent text-accent-foreground font-medium'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                   }`}
                 >
                   <StatusDot status={inst.health.overall} />
@@ -71,23 +84,21 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Server stats */}
         {host && (
-          <div className="border-t border-gray-800 p-4">
-            <div className="text-xs text-gray-600 mb-2">Server</div>
+          <div className="border-t border-border p-4">
+            <div className="text-xs text-muted-foreground mb-2">Server</div>
             <div className="space-y-2">
               <div className="flex justify-between text-xs">
-                <span className="text-gray-600">CPU</span>
-                <span className="text-gray-400">{host.cpuCount} vCPU</span>
+                <span className="text-muted-foreground">CPU</span>
+                <span>{host.cpuCount} vCPU</span>
               </div>
               <div>
                 <div className="flex justify-between text-xs mb-1">
-                  <span className="text-gray-600">Memory</span>
-                  <span className="text-gray-400">
-                    {host.usedMemGB?.toFixed(1)} / {host.totalMemGB?.toFixed(0)} GB
-                  </span>
+                  <span className="text-muted-foreground">Memory</span>
+                  <span>{host.usedMemGB?.toFixed(1)} / {host.totalMemGB?.toFixed(0)} GB</span>
                 </div>
-                <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
+                <div className="h-1 bg-muted rounded-full overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all ${memPercent > 85 ? 'bg-red-500' : 'bg-gray-500'}`}
+                    className={`h-full rounded-full transition-all ${memPercent > 85 ? 'bg-destructive' : 'bg-foreground/40'}`}
                     style={{ width: `${Math.min(memPercent, 100)}%` }}
                   />
                 </div>
@@ -97,7 +108,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         )}
       </aside>
 
-      {/* Main content */}
+      {/* Main */}
       <main className="flex-1 overflow-auto flex flex-col min-w-0">
         {children}
       </main>
