@@ -13,6 +13,10 @@
   </p>
 </div>
 
+<div align="center">
+  <img src="docs/demo.gif" alt="Supafleet dashboard demo" width="900" />
+</div>
+
 ---
 
 ## What is Supafleet?
